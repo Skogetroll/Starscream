@@ -45,15 +45,15 @@ public class WebSocket : NSObject, NSStreamDelegate {
         case PolicyViolated         = 1008
         case MessageTooBig          = 1009
     }
-
+    
     enum InternalErrorCode : UInt16 {
         // 0-999 WebSocket status codes not used
         case OutputStreamWriteError  = 1
     }
-
+    
     //Where the callback is executed. It defaults to the main UI thread queue.
     public var queue            = dispatch_get_main_queue()
-
+    
     var optionalProtocols       : Array<String>?
     //Constant Values.
     let headerWSUpgradeName     = "Upgrade"
@@ -127,12 +127,12 @@ public class WebSocket : NSObject, NSStreamDelegate {
         }
         dispatch_async(queue,{ [weak self] in
             self?.didDisconnect = false
-        })
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), { [weak self] in
-            self?.isCreated = true
-            self?.createHTTPRequest()
-            self?.isCreated = false
-        })
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), { [weak self] in
+                self?.isCreated = true
+                self?.createHTTPRequest()
+                self?.isCreated = false
+                })
+            })
     }
     
     ///disconnect from the websocket server
@@ -302,9 +302,12 @@ public class WebSocket : NSObject, NSStreamDelegate {
         let length = inputStream!.read(buffer, maxLength: BUFFER_MAX)
         if length > 0 {
             if !connected {
-                let status = processHTTP(buffer, bufferLen: length)
-                if !status {
-                    doDisconnect(self.errorWithDetail("Invalid HTTP upgrade", code: 1))
+                connected = processHTTP(buffer, bufferLen: length)
+                if !connected {
+                    let response = CFHTTPMessageCreateEmpty(kCFAllocatorDefault, Boolean.min).takeRetainedValue()
+                    CFHTTPMessageAppendBytes(response, buffer, length)
+                    let code = CFHTTPMessageGetResponseStatusCode(response)
+                    doDisconnect(errorWithDetail("Invalid HTTP upgrade", code: UInt16(code)))
                 }
             } else {
                 var process = false
@@ -361,7 +364,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                     if let s = self {
                         s.delegate?.websocketDidConnect(s)
                     }
-                })
+                    })
                 totalSize += 1 //skip the last \n
                 let restSize = bufferLen - totalSize
                 if restSize > 0 {
@@ -505,7 +508,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                     if let s = self {
                         s.pongDelegate?.websocketDidReceivePong(s)
                     }
-                })
+                    })
                 
                 let step = Int(offset+numericCast(len))
                 let extra = bufferLen-step
@@ -600,7 +603,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                     if let s = self {
                         s.delegate?.websocketDidReceiveMessage(s, text: str! as! String)
                     }
-                })
+                    })
             } else if response.code == .BinaryFrame {
                 let data = response.buffer! //local copy so it is perverse for writing
                 dispatch_async(queue,{ [weak self] in
@@ -610,7 +613,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                     if let s = self {
                         s.delegate?.websocketDidReceiveData(s, data: data)
                     }
-                })
+                    })
             }
             readStack.removeLast()
             return true
@@ -695,7 +698,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                         break
                     }
                 }
-
+                
             }
         }
     }
@@ -711,7 +714,7 @@ public class WebSocket : NSObject, NSStreamDelegate {
                 if let s = self {
                     s.delegate?.websocketDidDisconnect(s, error: error)
                 }
-            })
+                })
         }
     }
     
